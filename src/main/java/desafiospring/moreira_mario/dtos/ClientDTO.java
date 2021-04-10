@@ -8,7 +8,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ClientDTO {
+public class ClientDTO  {
     private Long idClient;
     private String dni;
     private String name;
@@ -19,5 +19,6 @@ public class ClientDTO {
     private String province;
     private List<PurchaseDTO> cart;
     private List<PurchaseDTO> orders;
+
 
 }

@@ -1,29 +1,23 @@
 package desafiospring.moreira_mario.repositories.products;
 
+import desafiospring.moreira_mario.dtos.ClientDTO;
 import desafiospring.moreira_mario.dtos.ProductDTO;
+import desafiospring.moreira_mario.dtos.PurchaseArticleDTO;
 import desafiospring.moreira_mario.dtos.PurchaseDTO;
 import desafiospring.moreira_mario.exceptions.ApiException;
-import desafiospring.moreira_mario.repositories.products.ProductsRepository;
+import desafiospring.moreira_mario.repositories.XLSXUtil;
 import desafiospring.moreira_mario.services.comparators.ComparatorHigherPrice;
 import desafiospring.moreira_mario.services.comparators.ComparatorLowerPrice;
 import desafiospring.moreira_mario.services.comparators.ComparatorNameAsc;
 import desafiospring.moreira_mario.services.comparators.ComparatorNameDesc;
 import desafiospring.moreira_mario.services.sorters.Sorter;
 import desafiospring.moreira_mario.services.sorters.SorterFactory;
-import org.apache.poi.EncryptedDocumentException;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
-import org.springframework.util.ResourceUtils;
 
-import java.io.*;
 import java.util.*;
 
 
-import java.io.FileInputStream;
 import java.util.stream.Collectors;
 
 @Repository
@@ -32,73 +26,82 @@ public class ProductsRepositoryImpl implements ProductsRepository {
     // el mapa params ademas valida que no se envien mas de 2 filtro y el orden
     @Override
     public Map<Long, ProductDTO> selectProducts(Map<String, String> params) throws ApiException {
-
-        Map<Long, ProductDTO> productsMap = this.reedArchive();
         if (params.size() > 3 || (params.get("order") == null && params.size() == 3)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Error: Cantidad de filtros simultaneos excedida.");
         } else {
-            for (Map.Entry<String, String> filter : params.entrySet()) {
-                productsMap = this.applyFilters(filter, productsMap);
-            }
+            return this.selectProduct(params);
         }
-
-        return productsMap;
     }
+
     //recibo una mapa de filtros lee el archico excel configurda en el archivo properties luego le aplica los filtros por cada resgistro que tenga
     // el mapa params
-    @Override
     public Map<Long, ProductDTO> selectProduct(Map<String, String> params) throws ApiException {
-        Map<Long, ProductDTO> productsMap = this.reedArchive();
-        for (Map.Entry<String, String> filter : params.entrySet()) {
-            productsMap = this.applyFilters(filter, productsMap);
+        Map<Long, ProductDTO> products = new HashMap<>();
+        Map<Long, ArrayList<String>> data = XLSXUtil.readXLSX("productsSheet");
+        for (Map.Entry entry : data.entrySet()) {
+            List<String> line = (ArrayList<String>) entry.getValue();
+            ProductDTO product = new ProductDTO();
+            product.setProductId(Long.parseLong(line.get(0).replace(".0", "")));
+            product.setName(line.get(1));
+            product.setCategory(line.get(2));
+            product.setBrand(line.get(3));
+            String price = line.get(4).replace("$", "");
+            price = price.replace(".", "");
+            product.setPrice(Double.parseDouble(price)/10);
+            product.setQuantity(Integer.parseInt(line.get(5).replace(".0", "")));
+            if (line.get(6).equals("SI")) {
+                product.setFreeShipping(true);
+            } else {
+                product.setFreeShipping(false);
+            }
+            product.setPrestige(line.get(7));
+            products.put(product.getProductId(), product);
         }
-        return productsMap;
+        for (Map.Entry<String, String> filter : params.entrySet()) {
+            products = this.applyFilters(filter, products);
+        }
+        return products;
     }
+
     //recibe una orden de compra y actualiza el stock de los productos dentro de la orden
     @Override
     public void updateStock(PurchaseDTO purchaseDTO) throws ApiException {
-        String fileName = "";
-        String filePath = "";
-        Integer sheetNum = 0;
-        Properties properties = new Properties();
-        XSSFWorkbook book = null;
-        FileInputStream file = null;
-        try {
-            File newFile = new File("");
-            properties.load(new FileInputStream(ResourceUtils.getFile("classpath:Products.properties")));
-            fileName = properties.get("file").toString();
-            filePath = newFile.getAbsolutePath()+properties.get("filePath").toString() + fileName;
-            sheetNum = Integer.parseInt(properties.get("productsSheet").toString());
-            file = new FileInputStream(ResourceUtils.getFile(filePath));
-            book = new XSSFWorkbook(file);
+        for (int j = 0; j < purchaseDTO.getArticles().size(); j++) {
+            PurchaseArticleDTO purchaseArticle = purchaseDTO.getArticles().get(j);
+            Map<String, String> filters = new HashMap<>();
+            filters.put("productId", purchaseArticle.getProductId().toString());
+            filters.put("name", purchaseArticle.getName());
+            filters.put("brand", purchaseArticle.getBrand());
+            Map<Long, ProductDTO> products;
+            products = this.selectProduct(filters);
 
-            XSSFSheet sheet = book.getSheetAt(sheetNum);
-            Iterator<Row> rowIterator = sheet.rowIterator();
-            Row row;
-            for (int j = 0; j < purchaseDTO.getArticles().size(); j++) {
-                Long producId = purchaseDTO.getArticles().get(j).getProductId();
-                while (rowIterator.hasNext()) {
-                    row = rowIterator.next();
-                    if (row.getRowNum() > 0 && row.getCell(0) != null) {
-                        if (row.getCell(0).getNumericCellValue() == producId) {
-                            Cell cell = row.getCell(5);
-                            cell.setCellValue(cell.getNumericCellValue() - purchaseDTO.getArticles().get(j).getQuantity());
-                            break;
-                        }
-                    }
-                }
+            if (products.size() == 1) {
+                ProductDTO product = products.get(purchaseArticle.getProductId());
+                product.setQuantity(product.getQuantity() - purchaseArticle.getQuantity());
+                this.updtaeProduct(product);
             }
-
-            file.close();
-            FileOutputStream outputStream = new FileOutputStream(filePath);
-            book.write(outputStream);
-            book.close();
-            outputStream.close();
-
-        } catch (IOException | EncryptedDocumentException e) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Error: No se encontro el siguiente Archivo: " + e.getMessage() + ".");
         }
     }
+
+    private void updtaeProduct(ProductDTO product) throws ApiException {
+        Map<String, String> filters = new HashMap<>();
+        filters = new HashMap<>();
+        filters.put("0", product.getProductId().toString());
+        Map<Integer, String> prod = new HashMap<>();
+        prod.put(1, product.getName());
+        prod.put(2, product.getCategory());
+        prod.put(3, product.getBrand());
+        prod.put(4, product.getPrice().toString());
+        prod.put(5, product.getQuantity().toString());
+        if (product.isFreeShipping()) {
+            prod.put(6, "SI");
+        } else {
+            prod.put(6, "NO");
+        }
+        prod.put(7, product.getPrestige());
+        XLSXUtil.updateXLSX(prod, filters, "productsSheet");
+    }
+
     //recibe un productodto, abre el excel que esta configurado en el archivo properties y escribe una nueva linea con los
     //datos que vienen en el productodto en la hoja correspondiente
     @Override
@@ -110,74 +113,27 @@ public class ProductsRepositoryImpl implements ProductsRepository {
         Map<Long, ProductDTO> products;
         products = this.selectProduct(filters);
         if (products.size() == 0) {
-            String fileName = "";
-            String filePath = "";
-            Integer sheetNum = 0;
-            Properties properties = new Properties();
-            XSSFWorkbook book = null;
-            FileInputStream file = null;
-            try {
-                File newFile = new File("");
-                properties.load(new FileInputStream(ResourceUtils.getFile("classpath:Products.properties")));
-                fileName = properties.get("file").toString();
-                filePath = newFile.getAbsolutePath()+properties.get("filePath").toString() + fileName;
-                sheetNum = Integer.parseInt(properties.get("productsSheet").toString());
-                file = new FileInputStream(ResourceUtils.getFile(filePath));
-                book = new XSSFWorkbook(file);
 
-                XSSFSheet sheet = book.getSheetAt(sheetNum);
-                int rowCount = sheet.getLastRowNum();
-                Long productId = 0L;
-                if (rowCount > 0) {
-                    try {
-                        productId = (long) sheet.getRow(rowCount).getCell(0).getNumericCellValue() + 1;
-                    } catch (NullPointerException e) {
-                        productId = (long) rowCount;
-                    }
-                } else {
-                    productId = 1L;
-                }
-                product.setProductId(productId);
-                Row row = sheet.createRow(++rowCount);
-
-                Cell cell = row.createCell(0);
-                cell.setCellValue(productId);
-                cell = row.createCell(1);
-                cell.setCellValue(product.getName());
-                cell = row.createCell(2);
-                cell.setCellValue(product.getCategory());
-                cell = row.createCell(3);
-                cell.setCellValue(product.getBrand());
-                cell = row.createCell(4);
-                cell.setCellValue(product.getPrice());
-                cell = row.createCell(5);
-                cell.setCellValue(product.getQuantity());
-                cell = row.createCell(6);
-                if (product.isFreeShipping()) {
-                    cell.setCellValue("SI");
-                } else {
-                    cell.setCellValue("NO");
-                }
-                cell = row.createCell(7);
-                cell.setCellValue(product.getPrestige());
-
-                file.close();
-                FileOutputStream outputStream = new FileOutputStream(filePath);
-                book.write(outputStream);
-                book.close();
-                outputStream.close();
-
-            } catch (IOException | EncryptedDocumentException e) {
-                throw new ApiException(HttpStatus.NOT_FOUND, "Error: No se encontro el siguiente Archivo: " + e.getMessage() + ".");
+            Map<Integer, String> prod = new HashMap<>();
+            prod.put(1, product.getName());
+            prod.put(2, product.getCategory());
+            prod.put(3, product.getBrand());
+            prod.put(4, product.getPrice().toString());
+            prod.put(5, product.getQuantity().toString());
+            if (product.isFreeShipping()) {
+                prod.put(6, "SI");
+            } else {
+                prod.put(6, "NO");
             }
-            catch (NullPointerException e) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Error:  Formato de JSON invalido.");
-            }
+            prod.put(7, product.getPrestige());
+            product.setProductId(XLSXUtil.writeXLSX(prod, "productsSheet"));
+
             return product;
         } else {
             throw new ApiException(HttpStatus.CONFLICT, "Error: el Producto: " + product.getName() + " " + product.getCategory() + " " + product.getBrand() + " ya existe.");
         }
     }
+
     // recibe un map.entry  filter con un filtro y un mapa de productos dto, filtro el mapa en funcion de filter
     private Map<Long, ProductDTO> applyFilters(Map.Entry<String, String> filter, Map<Long, ProductDTO> products) throws ApiException {
         try {
@@ -242,6 +198,7 @@ public class ProductsRepositoryImpl implements ProductsRepository {
         }
         return products;
     }
+
     // recibe un order y un mapa de  productos dto
     // combierto el mapa e un array
     // utilizo un factory obtener la implementacion de ordenamiento correcta
@@ -271,51 +228,5 @@ public class ProductsRepositoryImpl implements ProductsRepository {
         }
         return products;
     }
-    // leo el archivo xlsx utilizado como base de datos y devlevo un mapa con productos
-    private Map<Long, ProductDTO> reedArchive() throws ApiException {
-        String fileName = "";
-        String filePath = "";
-        Integer sheetNum = 0;
-        Properties properties = new Properties();
-        XSSFWorkbook book = null;
-        FileInputStream file = null;
-        Map<Long, ProductDTO> products = new HashMap<>();
-        try {
-            File newFile = new File("");
-            properties.load(new FileInputStream(ResourceUtils.getFile("classpath:Products.properties")));
-            fileName = properties.get("file").toString();
-            filePath = newFile.getAbsolutePath()+properties.get("filePath").toString() + fileName;
-            sheetNum = Integer.parseInt(properties.get("productsSheet").toString());
-            file = new FileInputStream(ResourceUtils.getFile(filePath));
-            book = new XSSFWorkbook(file);
-        } catch (IOException e) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Error: No se encontro el siguiente Archivo: " + e.getMessage() + ".");
-        }
-        XSSFSheet sheet = book.getSheetAt(sheetNum);
-        Iterator<Row> rowIterator = sheet.rowIterator();
-        Row row;
 
-        while (rowIterator.hasNext()) {
-            row = rowIterator.next();
-            ProductDTO product = new ProductDTO();
-            if (row.getRowNum() > 0 && row.getCell(0) != null) {
-                product.setProductId(((long) row.getCell(0).getNumericCellValue()));
-                product.setName(row.getCell(1).toString());
-                product.setCategory(row.getCell(2).toString());
-                product.setBrand(row.getCell(3).getStringCellValue());
-                String price = row.getCell(4).toString().replace("$", "");
-                price = price.replace(".", "");
-                product.setPrice(Double.parseDouble(price));
-                product.setQuantity((int) row.getCell(5).getNumericCellValue());
-                if (row.getCell(6).toString().equals("SI")) {
-                    product.setFreeShipping(true);
-                } else {
-                    product.setFreeShipping(false);
-                }
-                product.setPrestige(row.getCell(7).toString());
-                products.put(product.getProductId(), product);
-            }
-        }
-        return products;
-    }
 }

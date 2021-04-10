@@ -9,4 +9,5 @@ public interface PurchaseRepository {
     PurchaseDTO createTicket(PurchaseDTO purchase) throws ApiException;
     PurchaseDTO addToCart(PurchaseDTO purchase) throws ApiException;
     void clearCart(Long clientId) throws ApiException;
+    void clearArticles(Long idPurchase) throws ApiException;
 }

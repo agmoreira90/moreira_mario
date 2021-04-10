@@ -25,6 +25,7 @@ public class PurchaseServiceImpl implements PurchaseService {
         this.purchaseRepository = purchaseRepository;
         this.clientRepository = clientRepository;
     }
+
     //recibe un purchase dto lo valida segun la letra y lo envia apra ser impactado en el repositorio
     @Override
     public ResponseDTO purchase(PurchaseDTO purchase) throws ApiException {
@@ -59,6 +60,7 @@ public class PurchaseServiceImpl implements PurchaseService {
         }
         return response;
     }
+
     //recibe un purchsedto valida que el cliente exista q no sea vacio y envia al repositorio a impactar en la planilla xlsx
     @Override
     public ResponseDTO addToCart(PurchaseDTO purchase) throws ApiException {
@@ -93,6 +95,7 @@ public class PurchaseServiceImpl implements PurchaseService {
         }
         return response;
     }
+
     // recibe un cliente id valida que exista y obtiene su carrito de compras
     // envia el carrito de cpmpras como una compra finalizada a impactar en el repositorio
     // limpia el carrito de compras
@@ -104,13 +107,20 @@ public class PurchaseServiceImpl implements PurchaseService {
         if (clients.size() != 0) {
             if (clients.size() == 1) {
                 Map<Long, PurchaseArticleDTO> articles = new HashMap<>();
-                if (clients.get(clientId).getCart().size() > 0) {
-                    for (int i = 0; i < clients.get(clientId).getCart().size(); i++) {
-                        for (int j = 0; j < clients.get(clientId).getCart().get(i).getArticles().size(); j++) {
-                            if (articles.get(clients.get(clientId).getCart().get(i).getArticles().get(j).getProductId()) == null) {
-                                articles.put(clients.get(clientId).getCart().get(i).getArticles().get(j).getProductId(), clients.get(clientId).getCart().get(i).getArticles().get(j));
+                List<PurchaseDTO> carts = clients.get(clientId).getCart();
+                if (carts.size() > 0) {
+                    List<Long> idCarts = new ArrayList<>();
+                    for (int i = 0; i < carts.size(); i++) {
+                        idCarts.add(carts.get(i).getId());
+                        List<PurchaseArticleDTO> articlesList = carts.get(i).getArticles();
+                        for (int j = 0; j < articlesList.size(); j++) {
+                            PurchaseArticleDTO purchaseArticle = articlesList.get(j);
+                            if (articles.get(purchaseArticle.getProductId()) == null) {
+                                articles.put(purchaseArticle.getProductId(), purchaseArticle);
                             } else {
-                                articles.get(clients.get(clientId).getCart().get(i).getArticles().get(j).getProductId()).setQuantity(articles.get(clients.get(clientId).getCart().get(i).getArticles().get(j).getProductId()).getQuantity() + clients.get(clientId).getCart().get(i).getArticles().get(j).getQuantity());
+                                PurchaseArticleDTO purchaseArticleAux = articles.get(purchaseArticle.getProductId());
+                                purchaseArticleAux.setQuantity(purchaseArticleAux.getQuantity() + purchaseArticle.getQuantity());
+                                articles.put(purchaseArticleAux.getProductId(), purchaseArticleAux);
                             }
                         }
                     }
@@ -124,8 +134,11 @@ public class PurchaseServiceImpl implements PurchaseService {
                     ResponseDTO response = this.purchase(purchase);
                     if (response.getTicket() != null && response.getTicket().getId() > 0) {
                         this.purchaseRepository.clearCart(clientId);
+                        for (int i = 0; i < idCarts.size(); i++) {
+                            this.purchaseRepository.clearArticles(idCarts.get(i));
+                        }
                     }
-                    return this.purchase(purchase);
+                    return response;
                 } else {
                     ResponseDTO response = new ResponseDTO();
                     StatusCodeDTO status = new StatusCodeDTO();

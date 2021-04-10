@@ -1,10 +1,10 @@
 package desafiospring.moreira_mario.repositories.clients;
 
 import desafiospring.moreira_mario.dtos.ClientDTO;
-import desafiospring.moreira_mario.dtos.ProductDTO;
 import desafiospring.moreira_mario.dtos.PurchaseArticleDTO;
 import desafiospring.moreira_mario.dtos.PurchaseDTO;
 import desafiospring.moreira_mario.exceptions.ApiException;
+import desafiospring.moreira_mario.repositories.XLSXUtil;
 import desafiospring.moreira_mario.services.comparators.ComparatorHigherPrice;
 import desafiospring.moreira_mario.services.comparators.ComparatorLowerPrice;
 import desafiospring.moreira_mario.services.comparators.ComparatorNameAsc;
@@ -12,18 +12,9 @@ import desafiospring.moreira_mario.services.comparators.ComparatorNameDesc;
 import desafiospring.moreira_mario.services.sorters.Sorter;
 import desafiospring.moreira_mario.services.sorters.SorterFactory;
 import org.apache.poi.EncryptedDocumentException;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
-import org.springframework.util.ResourceUtils;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -36,86 +27,53 @@ public class ClientRepositoryImpl implements ClientRepository {
         Map<String, String> filters = new HashMap<>();
         filters.put("dni", client.getDni());
         filters.put("mail", client.getMail());
-
         Map<Long, ClientDTO> clients;
         clients = this.selectClients(filters);
         if (clients.size() == 0) {
 
-            String fileName = "";
-            String filePath = "";
-            Integer sheetNum = 0;
-            Properties properties = new Properties();
-            XSSFWorkbook book = null;
-            FileInputStream file = null;
-            try {
-                File newFile = new File("");
-                properties.load(new FileInputStream(ResourceUtils.getFile("classpath:Products.properties")));
-                fileName = properties.get("file").toString();
-                filePath = newFile.getAbsolutePath() + properties.get("filePath").toString() + fileName;
-                sheetNum = Integer.parseInt(properties.get("clientsSheet").toString());
-                file = new FileInputStream(ResourceUtils.getFile(filePath));
-                book = new XSSFWorkbook(file);
+            Map<Integer, String> cli = new HashMap<>();
+            cli.put(1, client.getDni());
+            cli.put(2, client.getName());
+            cli.put(3, client.getSurname());
+            cli.put(4, client.getMail());
+            cli.put(5, client.getPhone());
+            cli.put(6, client.getAddress());
+            cli.put(7, client.getProvince());
+            client.setIdClient(XLSXUtil.writeXLSX(cli, "clientsSheet"));
 
-                XSSFSheet sheet = book.getSheetAt(sheetNum);
-                int rowCount = sheet.getLastRowNum();
-                Long clientId = 0L;
-                System.out.println(rowCount);
-                if (rowCount > 0) {
-                    try {
-                        clientId = (long) sheet.getRow(rowCount).getCell(0).getNumericCellValue() + 1;
-                    } catch (NullPointerException e) {
-                        clientId = (long) rowCount;
-                    }
-                } else {
-                    clientId = 1L;
-                }
-                client.setIdClient(clientId);
-                Row row = sheet.createRow(++rowCount);
-
-                Cell cell = row.createCell(0);
-                cell.setCellValue(clientId);
-                cell = row.createCell(1);
-                cell.setCellValue(client.getDni());
-                cell = row.createCell(2);
-                cell.setCellValue(client.getName());
-                cell = row.createCell(3);
-                cell.setCellValue(client.getSurname());
-                cell = row.createCell(4);
-                cell.setCellValue(client.getMail());
-                cell = row.createCell(5);
-                cell.setCellValue(client.getPhone());
-                cell = row.createCell(6);
-                cell.setCellValue(client.getAddress());
-                cell = row.createCell(7);
-                cell.setCellValue(client.getProvince());
-
-                file.close();
-                FileOutputStream outputStream = new FileOutputStream(filePath);
-                book.write(outputStream);
-                book.close();
-                outputStream.close();
-
-            } catch (IOException | EncryptedDocumentException | NullPointerException e) {
-                throw new ApiException(HttpStatus.NOT_FOUND, "Error: No se encontro el siguiente Archivo: " + e.getMessage() + ".");
-            }
             return client;
         } else {
             throw new ApiException(HttpStatus.CONFLICT, "Error: el Cliente: " + client.getDni() + " " + client.getMail() + " ya existe.");
         }
-
     }
 
     //recibo una mapa de filtros lee el archico excel configurda en el archivo properties luego le aplica los filtros por cada resgistro que tenga
     // el mapa params
     @Override
     public Map<Long, ClientDTO> selectClients(Map<String, String> params) throws ApiException {
-        Map<Long, ClientDTO> clientsMap = this.reedArchive();
-        for (Map.Entry<String, String> filter : params.entrySet()) {
-            clientsMap = this.applyFilters(filter, clientsMap);
-
+        Map<Long, ClientDTO> clients = new HashMap<>();
+        Map<Long, ArrayList<String>> data = XLSXUtil.readXLSX("clientsSheet");
+        for (Map.Entry entry : data.entrySet()) {
+            List<String> line = (ArrayList<String>) entry.getValue();
+            ClientDTO client = new ClientDTO();
+            client.setIdClient(Long.parseLong(line.get(0).replace(".0", "")));
+            client.setDni(line.get(1));
+            client.setName(line.get(2));
+            client.setSurname(line.get(3));
+            client.setMail(line.get(4));
+            client.setPhone(line.get(5));
+            client.setAddress(line.get(6));
+            client.setProvince(line.get(7));
+            client.setCart(this.getPurchase(client.getIdClient(), "cartsSheet", "cartsArticlesSheet"));
+            client.setOrders(this.getPurchase(client.getIdClient(), "purchaseSheet", "purchaseArticlesSheet"));
+            clients.put(client.getIdClient(), client);
         }
-        return clientsMap;
+        for (Map.Entry<String, String> filter : params.entrySet()) {
+            clients = this.applyFilters(filter, clients);
+        }
+        return clients;
     }
+
     // recibe un map.entry  filter con un filtro y un mapa de cliente dto, filtro el mapa en funcion de filter
     private Map<Long, ClientDTO> applyFilters(Map.Entry<String, String> filter, Map<Long, ClientDTO> clients) throws ApiException {
         try {
@@ -170,6 +128,7 @@ public class ClientRepositoryImpl implements ClientRepository {
         }
         return clients;
     }
+
     // recibe un order y un mapa de  cliente dto
     // combierto el mapa e un array
     // utilizo un factory obtener la implementacion de ordenamiento correcta
@@ -199,121 +158,43 @@ public class ClientRepositoryImpl implements ClientRepository {
         }
         return clients;
     }
-    // leo el archivo xlsx utilizado como base de datos y devlevo un mapa con clientes
-    private Map<Long, ClientDTO> reedArchive() throws ApiException {
-        String fileName = "";
-        String filePath = "";
-        Integer sheetNum = 0;
-        Properties properties = new Properties();
-        XSSFWorkbook book = null;
-        FileInputStream file = null;
-        Map<Long, ClientDTO> clients = new HashMap<>();
-        try {
-            File newFile = new File("");
-            properties.load(new FileInputStream(ResourceUtils.getFile("classpath:Products.properties")));
-            fileName = properties.get("file").toString();
-            filePath = newFile.getAbsolutePath() + properties.get("filePath").toString() + fileName;
-            sheetNum = Integer.parseInt(properties.get("clientsSheet").toString());
-            file = new FileInputStream(ResourceUtils.getFile(filePath));
-            book = new XSSFWorkbook(file);
-        } catch (IOException e) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Error: No se encontro el siguiente Archivo: " + e.getMessage() + ".");
-        }
-        XSSFSheet sheet = book.getSheetAt(sheetNum);
-        Iterator<Row> rowIterator = sheet.rowIterator();
-        Row row;
 
-        while (rowIterator.hasNext()) {
-            row = rowIterator.next();
-            ClientDTO client = new ClientDTO();
-            if (row.getRowNum() > 0 && row.getCell(0) != null) {
-                client.setIdClient(((long) row.getCell(0).getNumericCellValue()));
-                client.setDni(row.getCell(1).toString());
-                client.setName(row.getCell(2).toString());
-                client.setSurname(row.getCell(3).toString());
-                client.setMail(row.getCell(4).toString());
-                client.setPhone(row.getCell(5).toString());
-                client.setAddress(row.getCell(6).toString());
-                client.setProvince(row.getCell(7).toString());
-                client.setCart(this.getPurchase((long) row.getCell(0).getNumericCellValue(), "cartsSheet", "cartsArticlesSheet"));
-                client.setOrders(this.getPurchase((long) row.getCell(0).getNumericCellValue(), "purchaseSheet", "purchaseArticlesSheet"));
-                clients.put(client.getIdClient(), client);
-            }
-        }
-        return clients;
-    }
     // leo el archivo xlsx utilizado como base de datos y devlevo el carrito de compras que tiene pendiente el cliente
     private List<PurchaseDTO> getPurchase(Long clientId, String sheetName, String sheetName2) throws ApiException {
-        String fileName = "";
-        String filePath = "";
-        Integer sheetNum = 0;
-        Properties properties = new Properties();
-        XSSFWorkbook book = null;
-        FileInputStream file = null;
         List<PurchaseDTO> purchases = new ArrayList();
-        try {
-            File newFile = new File("");
-            properties.load(new FileInputStream(ResourceUtils.getFile("classpath:Products.properties")));
-            fileName = properties.get("file").toString();
-            filePath = newFile.getAbsolutePath() + properties.get("filePath").toString() + fileName;
-            sheetNum = Integer.parseInt(properties.get(sheetName).toString());
-            file = new FileInputStream(ResourceUtils.getFile(filePath));
-            book = new XSSFWorkbook(file);
-        } catch (IOException e) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Error: No se encontro el siguiente Archivo: " + e.getMessage() + ".");
-        }
-        XSSFSheet sheet = book.getSheetAt(sheetNum);
-        Iterator<Row> rowIterator = sheet.rowIterator();
-        Row row;
-
-        while (rowIterator.hasNext()) {
-            row = rowIterator.next();
-            PurchaseDTO purchase = new PurchaseDTO();
-            if (row.getRowNum() > 0 && row.getCell(0) != null && (long) row.getCell(2).getNumericCellValue() == clientId) {
-                purchase.setId(((long) row.getCell(0).getNumericCellValue()));
-                purchase.setTotal((double) row.getCell(1).getNumericCellValue());
-                purchase.setIdClient(((long) row.getCell(2).getNumericCellValue()));
-                purchase.setArticles(this.getPurchaseArticles((long) row.getCell(0).getNumericCellValue(), sheetName2));
+        Map<Long, ArrayList<String>> data = XLSXUtil.readXLSX(sheetName);
+        for (Map.Entry entry : data.entrySet()) {
+            List<String> line = (ArrayList<String>) entry.getValue();
+            Long id = Long.parseLong(line.get(2).replace(".0", ""));
+            if (id == clientId) {
+                PurchaseDTO purchase = new PurchaseDTO();
+                purchase.setId(Long.parseLong(line.get(0).replace(".0", "")));
+                purchase.setTotal(Double.parseDouble(line.get(1)));
+                purchase.setIdClient(id);
+                purchase.setArticles(getPurchaseArticles(purchase.getId(), sheetName2));
                 purchases.add(purchase);
             }
         }
         return purchases;
-
     }
+
     // leo el archivo xlsx utilizado como base de datos y devlevo los articulos del carrito de compra del cliente
     private List<PurchaseArticleDTO> getPurchaseArticles(Long idPurchase, String sheetName) throws ApiException {
-        String fileName = "";
-        String filePath = "";
-        Integer sheetNum = 0;
-        Properties properties = new Properties();
-        XSSFWorkbook book = null;
-        FileInputStream file = null;
         List<PurchaseArticleDTO> purchasesArticles = new ArrayList();
-        try {
-            File newFile = new File("");
-            properties.load(new FileInputStream(ResourceUtils.getFile("classpath:Products.properties")));
-            fileName = properties.get("file").toString();
-            filePath = newFile.getAbsolutePath() + properties.get("filePath").toString() + fileName;
-            sheetNum = Integer.parseInt(properties.get(sheetName).toString());
-            file = new FileInputStream(ResourceUtils.getFile(filePath));
-            book = new XSSFWorkbook(file);
-        } catch (IOException e) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Error: No se encontro el siguiente Archivo: " + e.getMessage() + ".");
-        }
-        XSSFSheet sheet = book.getSheetAt(sheetNum);
-        Iterator<Row> rowIterator = sheet.rowIterator();
-        Row row;
+        Map<Long, ArrayList<String>> data = XLSXUtil.readXLSX(sheetName);
+        data = data.entrySet().stream()
+                .filter(article -> Long.parseLong(article.getValue().get(0).replace(".0", "")) == idPurchase)
+                .collect(Collectors.toMap(article -> article.getKey(), article -> article.getValue()));
 
-        while (rowIterator.hasNext()) {
-            row = rowIterator.next();
+        for (Map.Entry entry : data.entrySet()) {
+            List<String> line = (ArrayList<String>) entry.getValue();
+
             PurchaseArticleDTO purchaseArticle = new PurchaseArticleDTO();
-            if (row.getRowNum() > 0 && row.getCell(0) != null && (long) row.getCell(0).getNumericCellValue() == idPurchase) {
-                purchaseArticle.setProductId(((long) row.getCell(1).getNumericCellValue()));
-                purchaseArticle.setName(row.getCell(2).getStringCellValue());
-                purchaseArticle.setBrand(row.getCell(3).getStringCellValue());
-                purchaseArticle.setQuantity((int) row.getCell(1).getNumericCellValue());
-                purchasesArticles.add(purchaseArticle);
-            }
+            purchaseArticle.setProductId(Long.parseLong(line.get(1).replace(".0", "")));
+            purchaseArticle.setName(line.get(2));
+            purchaseArticle.setBrand(line.get(3));
+            purchaseArticle.setQuantity(Integer.parseInt(line.get(4).replace(".0", "")));
+            purchasesArticles.add(purchaseArticle);
         }
         return purchasesArticles;
     }
