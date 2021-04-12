@@ -1,6 +1,5 @@
 package desafiospring.moreira_mario.services.products;
 
-import desafiospring.moreira_mario.dtos.ClientDTO;
 import desafiospring.moreira_mario.dtos.ProductDTO;
 import desafiospring.moreira_mario.repositories.products.ProductsRepository;
 import org.springframework.http.HttpStatus;

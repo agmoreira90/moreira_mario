@@ -1,6 +1,5 @@
 package desafiospring.moreira_mario.repositories.products;
 
-import desafiospring.moreira_mario.dtos.ClientDTO;
 import desafiospring.moreira_mario.dtos.ProductDTO;
 import desafiospring.moreira_mario.dtos.PurchaseArticleDTO;
 import desafiospring.moreira_mario.dtos.PurchaseDTO;

@@ -11,7 +11,6 @@ import desafiospring.moreira_mario.services.comparators.ComparatorNameAsc;
 import desafiospring.moreira_mario.services.comparators.ComparatorNameDesc;
 import desafiospring.moreira_mario.services.sorters.Sorter;
 import desafiospring.moreira_mario.services.sorters.SorterFactory;
-import org.apache.poi.EncryptedDocumentException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
 

@@ -1,25 +1,20 @@
 package desafiospring.moreira_mario.controllers;
 
 import desafiospring.moreira_mario.dtos.ClientDTO;
-import desafiospring.moreira_mario.dtos.ProductDTO;
-import desafiospring.moreira_mario.dtos.PurchaseDTO;
-import desafiospring.moreira_mario.dtos.ResponseDTO;
 import desafiospring.moreira_mario.exceptions.ApiError;
 import desafiospring.moreira_mario.exceptions.ApiException;
 import desafiospring.moreira_mario.services.clients.ClientService;
-import desafiospring.moreira_mario.services.products.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping("/api/v2")
 public class ClientController {
 
     @Autowired

@@ -1,17 +1,9 @@
 package desafiospring.moreira_mario.repositories.purchase;
 
-import desafiospring.moreira_mario.dtos.PurchaseArticleDTO;
 import desafiospring.moreira_mario.dtos.PurchaseDTO;
 import desafiospring.moreira_mario.exceptions.ApiException;
 import desafiospring.moreira_mario.repositories.XLSXUtil;
-import org.apache.poi.EncryptedDocumentException;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
-import org.springframework.util.ResourceUtils;
 
 import java.io.File;
 import java.io.FileInputStream;
